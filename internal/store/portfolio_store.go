@@ -1,104 +1,111 @@
 package store
 
 import (
-    "context"
-    "log"
-    "time"
+	"context"
+	"log"
+	"time"
 
-    "crypto-tracker-trader/internal/model"
-    "github.com/jackc/pgx/v4"
+	"crypto-tracker-trader/internal/model"
+
+	"github.com/jackc/pgx/v4"
 )
 
 type PortfolioStore struct {
-    db *pgx.Conn
+	db *pgx.Conn
 }
 
 func NewPortfolioStore(databaseUrl string) *PortfolioStore {
-    conn, err := pgx.Connect(context.Background(), databaseUrl)
-    if err != nil {
-        log.Fatalf("Unable to connect to database: %v\n", err)
-    }
+	conn, err := pgx.Connect(context.Background(), databaseUrl)
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v\n", err)
+	}
 
-    return &PortfolioStore{db: conn}
+	return &PortfolioStore{db: conn}
 }
 
 func (s *PortfolioStore) Close() {
-    s.db.Close(context.Background())
+	if err := s.db.Close(context.Background()); err != nil {
+		log.Printf("Error closing database connection: %v", err)
+	}
 }
 
 func (s *PortfolioStore) AddSnapshot(snapshot model.PortfolioSnapshot) error {
-    tx, err := s.db.Begin(context.Background())
-    if err != nil {
-        return err
-    }
-    defer tx.Rollback(context.Background())
+	tx, err := s.db.Begin(context.Background())
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if rErr := tx.Rollback(context.Background()); rErr != nil && rErr != pgx.ErrTxClosed {
+			log.Printf("Rollback failed: %v", rErr)
+		}
+	}()
 
-    var snapshotID int
-    err = tx.QueryRow(context.Background(),
-        "INSERT INTO portfolio_snapshots (timestamp, total_value) VALUES ($1, $2) RETURNING id",
-        snapshot.Timestamp, snapshot.TotalValue).Scan(&snapshotID)
-    if err != nil {
-        return err
-    }
+	var snapshotID int
+	err = tx.QueryRow(context.Background(),
+		"INSERT INTO portfolio_snapshots (timestamp, total_value) VALUES ($1, $2) RETURNING id",
+		snapshot.Timestamp, snapshot.TotalValue).Scan(&snapshotID)
+	if err != nil {
+		return err
+	}
 
-    for _, asset := range snapshot.Assets {
-        _, err := tx.Exec(context.Background(),
-            "INSERT INTO portfolio_assets (snapshot_id, asset_id, quantity, value) VALUES ($1, $2, $3, $4)",
-            snapshotID, asset.AssetID, asset.Quantity, asset.Value)
-        if err != nil {
-            return err
-        }
-    }
+	for _, asset := range snapshot.Assets {
+		_, err := tx.Exec(context.Background(),
+			"INSERT INTO portfolio_assets (snapshot_id, asset_id, quantity, value) VALUES ($1, $2, $3, $4)",
+			snapshotID, asset.AssetID, asset.Quantity, asset.Value)
+		if err != nil {
+			return err
+		}
+	}
 
-    return tx.Commit(context.Background())
+	return tx.Commit(context.Background())
 }
 
 func (s *PortfolioStore) GetHistory() ([]model.PortfolioSnapshot, error) {
-    rows, err := s.db.Query(context.Background(),
-        `SELECT s.id, s.timestamp, s.total_value, a.asset_id, a.quantity, a.value
+	rows, err := s.db.Query(context.Background(),
+		`SELECT s.id, s.timestamp, s.total_value, a.asset_id, a.quantity, a.value
          FROM portfolio_snapshots s
          JOIN portfolio_assets a ON s.id = a.snapshot_id
          ORDER BY s.timestamp DESC`)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    snapshotsMap := make(map[int]*model.PortfolioSnapshot)
+	snapshotsMap := make(map[int]*model.PortfolioSnapshot)
 
-    for rows.Next() {
-        var snapshotID int
-        var timestamp time.Time
-        var totalValue string
-        var asset model.PortfolioAsset
+	for rows.Next() {
+		var snapshotID int
+		var timestamp time.Time
+		var totalValue string
+		var asset model.PortfolioAsset
 
-        err := rows.Scan(&snapshotID, &timestamp, &totalValue, &asset.AssetID, &asset.Quantity, &asset.Value)
-        if err != nil {
-            return nil, err
-        }
+		err := rows.Scan(&snapshotID, &timestamp, &totalValue, &asset.AssetID, &asset.Quantity, &asset.Value)
+		if err != nil {
+			return nil, err
+		}
 
-        if _, ok := snapshotsMap[snapshotID]; !ok {
-            snapshotsMap[snapshotID] = &model.PortfolioSnapshot{
-                Timestamp:  timestamp,
-                TotalValue: totalValue,
-                Assets:     []model.PortfolioAsset{},
-            }
-        }
-        snapshotsMap[snapshotID].Assets = append(snapshotsMap[snapshotID].Assets, asset)
-    }
+		if _, ok := snapshotsMap[snapshotID]; !ok {
+			snapshotsMap[snapshotID] = &model.PortfolioSnapshot{
+				Timestamp:  timestamp,
+				TotalValue: totalValue,
+				Assets:     []model.PortfolioAsset{},
+			}
+		}
+		snapshotsMap[snapshotID].Assets = append(snapshotsMap[snapshotID].Assets, asset)
+	}
 
-    // Convert map to slice and respect order
-    var snapshots []model.PortfolioSnapshot
-    // A bit of a hack to get ordered keys
-    var keys []int
-    for k := range snapshotsMap {
-        keys = append(keys, k)
-    }
-    // sort.Sort(sort.Reverse(sort.IntSlice(keys)))
+	// Convert map to slice and respect order
+	var snapshots []model.PortfolioSnapshot
+	// A bit of a hack to get ordered keys
+	var keys []int
+	for k := range snapshotsMap {
+		keys = append(keys, k)
+	}
+	// sort.Sort(sort.Reverse(sort.IntSlice(keys)))
 
-    for _, k := range keys {
-        snapshots = append(snapshots, *snapshotsMap[k])
-    }
+	for _, k := range keys {
+		snapshots = append(snapshots, *snapshotsMap[k])
+	}
 
-    return snapshots, nil
+	return snapshots, nil
 }

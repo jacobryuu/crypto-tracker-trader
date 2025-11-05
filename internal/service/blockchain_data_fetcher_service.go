@@ -14,14 +14,14 @@ import (
 
 // BlockchainDataFetcherService implements the BlockchainDataFetcher interface.
 type BlockchainDataFetcherService struct {
-	ethClient EthClientInterface
+	ethClient      EthClientInterface
 	portfolioStore store.PortfolioStoreInterface
 }
 
 // NewBlockchainDataFetcherService creates a new BlockchainDataFetcherService.
 func NewBlockchainDataFetcherService(ethClient EthClientInterface, portfolioStore store.PortfolioStoreInterface) BlockchainDataFetcher {
 	return &BlockchainDataFetcherService{
-		ethClient: ethClient,
+		ethClient:      ethClient,
 		portfolioStore: portfolioStore,
 	}
 }
@@ -51,7 +51,7 @@ func (s *BlockchainDataFetcherService) FetchAndSaveETHBalance(ctx context.Contex
 
 	// Create a portfolio snapshot
 	snapshot := model.PortfolioSnapshot{
-		Timestamp: time.Now(),
+		Timestamp:  time.Now(),
 		TotalValue: ethBalance.String(), // Store as string to match NUMERIC type in DB
 		Assets: []model.PortfolioAsset{
 			{

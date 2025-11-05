@@ -98,6 +98,6 @@ func TestBlockchainDataFetcherService_FetchAndSaveETHBalance(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to add portfolio snapshot")
 
 		mockEthClient.AssertExpectations(t)
-	mockPortfolioStore.AssertExpectations(t)
+		mockPortfolioStore.AssertExpectations(t)
 	})
 }

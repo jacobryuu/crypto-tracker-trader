@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"crypto-tracker-trader/internal/model"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
