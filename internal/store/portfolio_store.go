@@ -69,7 +69,7 @@ func (s *PortfolioStore) GetHistory() ([]model.PortfolioSnapshot, error) {
     for rows.Next() {
         var snapshotID int
         var timestamp time.Time
-        var totalValue float64
+        var totalValue string
         var asset model.PortfolioAsset
 
         err := rows.Scan(&snapshotID, &timestamp, &totalValue, &asset.AssetID, &asset.Quantity, &asset.Value)

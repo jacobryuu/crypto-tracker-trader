@@ -1,24 +1,38 @@
 package config
 
 import (
-    "os"
+	"log"
+	"os"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
-    Port        string
-    DatabaseURL string
+	Port              string
+	MasterDatabaseURL string
+	SlaveDatabaseURL  string
+	EthereumNodeURL   string
 }
 
 func Load() (*Config, error) {
-    port := os.Getenv("PORT")
-    if port == "" {
-        port = "8080"
-    }
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Error loading .env file, using system environment variables: %v", err)
+	}
 
-    dbURL := os.Getenv("DATABASE_URL")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
 
-    return &Config{
-        Port:        port,
-        DatabaseURL: dbURL,
-    }, nil
+	masterDBURL := os.Getenv("MASTER_DATABASE_URL")
+	slaveDBURL := os.Getenv("SLAVE_DATABASE_URL")
+	ethereumNodeURL := os.Getenv("ETHEREUM_NODE_URL")
+
+	return &Config{
+		Port:              port,
+		MasterDatabaseURL: masterDBURL,
+		SlaveDatabaseURL:  slaveDBURL,
+		EthereumNodeURL:   ethereumNodeURL,
+	}, nil
 }

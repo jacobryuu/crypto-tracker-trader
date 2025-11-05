@@ -8,6 +8,7 @@ import (
     "crypto-tracker-trader/internal/service"
     "crypto-tracker-trader/internal/store"
     "github.com/gin-gonic/gin"
+    "github.com/ethereum/go-ethereum/ethclient"
 )
 
 func main() {
@@ -16,18 +17,29 @@ func main() {
         log.Fatalf("failed to load config: %v", err)
     }
 
-    if cfg.DatabaseURL == "" {
-        log.Fatal("DATABASE_URL environment variable is not set")
+    if cfg.MasterDatabaseURL == "" {
+        log.Fatal("MASTER_DATABASE_URL environment variable is not set")
+    }
+
+    if cfg.EthereumNodeURL == "" {
+        log.Fatal("ETHEREUM_NODE_URL environment variable is not set")
     }
 
     r := gin.Default()
 
     // Create the store, service, and API
-    portfolioStore := store.NewPortfolioStore(cfg.DatabaseURL)
+    portfolioStore := store.NewPortfolioStore(cfg.MasterDatabaseURL)
     defer portfolioStore.Close()
 
+    ethClient, err := ethclient.Dial(cfg.EthereumNodeURL)
+    if err != nil {
+        log.Fatalf("Failed to connect to Ethereum node: %v", err)
+    }
+    defer ethClient.Close()
+
     portfolioService := service.NewPortfolioService(portfolioStore)
-    apiHandler := api.NewAPI(portfolioService)
+    blockchainDataFetcherService := service.NewBlockchainDataFetcherService(ethClient, portfolioStore)
+    apiHandler := api.NewAPI(portfolioService, blockchainDataFetcherService)
 
     // Register the routes
     apiHandler.RegisterRoutes(r)
