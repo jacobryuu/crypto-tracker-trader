@@ -5,12 +5,17 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgres://postgres:password@db:5432/crypto?sslmode=disable
+      - MASTER_DATABASE_URL=postgres://postgres:password@db:5432/crypto?sslmode=disable
     depends_on:
       - db
   db:
     image: postgres:15
     environment:
-      POSTGRES_PASSWORD: password
+      # In production, use a strong password and manage it securely (e.g., Kubernetes Secrets, Docker Secrets)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+volumes:
+  db_data:
     ports:
       - "5432:5432"

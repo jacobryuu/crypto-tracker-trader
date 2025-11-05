@@ -17,9 +17,9 @@ func TestPortfolioService(t *testing.T) {
     snapshot := model.PortfolioSnapshot{
         Timestamp: time.Now(),
         Assets: []model.PortfolioAsset{
-            {AssetID: "BTC", Quantity: 1, Value: 50000},
+            {AssetID: "BTC", Quantity: "1", Value: "50000"},
         },
-        TotalValue: 50000,
+        TotalValue: "50000",
     }
     snapshots := []model.PortfolioSnapshot{snapshot}
 
