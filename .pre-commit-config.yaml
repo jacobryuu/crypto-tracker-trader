@@ -6,11 +6,16 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
+
   - repo: https://github.com/golangci/golangci-lint
     rev: v2.6.1
     hooks:
       - id: golangci-lint
         args: ["--new-from-rev", "HEAD"]
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.14.0 # Use a recent stable version
+    hooks:
+      - id: hadolint
   - repo: https://github.com/dnephin/pre-commit-golang
     rev: v0.5.1
     hooks:
@@ -22,3 +27,21 @@ repos:
         name: go vet
         entry: ./scripts/run-go-vet.sh
         language: system
+      - id: go-test
+        name: go test
+        entry: go test ./...
+        language: system
+        pass_filenames: false
+        types: [go]
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: go mod tidy
+        language: system
+        pass_filenames: false
+        types: [go]
+      - id: gosec
+        name: gosec
+        entry: gosec ./...
+        language: system
+        pass_filenames: false
+        types: [go]
