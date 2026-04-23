@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"crypto-tracker-trader/internal/api"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v4"
 )
 
 func main() {
@@ -28,9 +30,21 @@ func main() {
 
 	r := gin.Default()
 
+	// Establish a single database connection
+	dbConn, err := pgx.Connect(context.Background(), cfg.MasterDatabaseURL)
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v\n", err)
+	}
+	if err := dbConn.Close(context.Background()); err != nil {
+		log.Printf("Error closing database connection: %v", err)
+	}
+
 	// Create the store, service, and API
-	portfolioStore := store.NewPortfolioStore(cfg.MasterDatabaseURL)
+	portfolioStore := store.NewPortfolioStore(dbConn)
 	defer portfolioStore.Close()
+
+	userStore := store.NewUserStore(dbConn)
+	defer userStore.Close()
 
 	ethClient, err := ethclient.Dial(cfg.EthereumNodeURL)
 	if err != nil {
@@ -40,7 +54,8 @@ func main() {
 
 	portfolioService := service.NewPortfolioService(portfolioStore)
 	blockchainDataFetcherService := service.NewBlockchainDataFetcherService(ethClient, portfolioStore)
-	apiHandler := api.NewAPI(portfolioService, blockchainDataFetcherService)
+	userService := service.NewUserService(userStore) // userService implements service.UserManager
+	apiHandler := api.NewAPI(portfolioService, blockchainDataFetcherService, userService)
 
 	// Register the routes
 	apiHandler.RegisterRoutes(r)

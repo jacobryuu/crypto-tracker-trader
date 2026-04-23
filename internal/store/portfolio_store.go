@@ -14,13 +14,8 @@ type PortfolioStore struct {
 	db *pgx.Conn
 }
 
-func NewPortfolioStore(databaseUrl string) *PortfolioStore {
-	conn, err := pgx.Connect(context.Background(), databaseUrl)
-	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
-	}
-
-	return &PortfolioStore{db: conn}
+func NewPortfolioStore(db *pgx.Conn) *PortfolioStore {
+	return &PortfolioStore{db: db}
 }
 
 func (s *PortfolioStore) Close() {
