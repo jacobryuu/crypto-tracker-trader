@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -38,6 +39,26 @@ func (m *MockPortfolioManager) GetPortfolioHistory() ([]model.PortfolioSnapshot,
 	return args.Get(0).([]model.PortfolioSnapshot), args.Error(1)
 }
 
+// MockUserManager is a mock implementation of service.UserManager
+type MockUserManager struct {
+	mock.Mock
+}
+
+func (m *MockUserManager) RegisterUser(username, email, password string) (*model.User, error) {
+	args := m.Called(username, email, password)
+	return args.Get(0).(*model.User), args.Error(1)
+}
+
+func (m *MockUserManager) LoginUser(email, password string) (*model.User, error) {
+	args := m.Called(email, password)
+	return args.Get(0).(*model.User), args.Error(1)
+}
+
+func (m *MockUserManager) GetUserByID(userID uint64) (*model.User, error) {
+	args := m.Called(userID)
+	return args.Get(0).(*model.User), args.Error(1)
+}
+
 func TestGetPortfolioHistory(t *testing.T) {
 	// Set up
 	gin.SetMode(gin.TestMode)
@@ -45,7 +66,8 @@ func TestGetPortfolioHistory(t *testing.T) {
 
 	mockPortfolioManager := new(MockPortfolioManager)
 	mockBlockchainDataFetcher := new(MockBlockchainDataFetcher)
-	apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher)
+	mockUserManager := new(MockUserManager) // Initialize mockUserManager
+	apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher, mockUserManager)
 
 	apiHandler.RegisterRoutes(r)
 
@@ -81,11 +103,12 @@ func TestGetPortfolioHistory(t *testing.T) {
 	mockPortfolioManager.AssertExpectations(t)
 
 	// Test case for error from service
-	rError := gin.Default()                                              // Create a new gin.Engine for the error case
-	mockPortfolioManager = new(MockPortfolioManager)                     // Reset mock
-	mockBlockchainDataFetcher = new(MockBlockchainDataFetcher)           // Reset mock
-	apiHandler = NewAPI(mockPortfolioManager, mockBlockchainDataFetcher) // Pass new mock
-	apiHandler.RegisterRoutes(rError)                                    // Register routes on the new engine
+	rError := gin.Default()                                                               // Create a new gin.Engine for the error case
+	mockPortfolioManager = new(MockPortfolioManager)                                      // Reset mock
+	mockBlockchainDataFetcher = new(MockBlockchainDataFetcher)                            // Reset mock
+	mockUserManager = new(MockUserManager)                                                // Reset mockUserManager
+	apiHandler = NewAPI(mockPortfolioManager, mockBlockchainDataFetcher, mockUserManager) // Pass new mock
+	apiHandler.RegisterRoutes(rError)                                                     // Register routes on the new engine
 
 	expectedError := errors.New("failed to fetch history")
 	mockPortfolioManager.On("GetPortfolioHistory").Return([]model.PortfolioSnapshot{}, expectedError)
@@ -116,7 +139,8 @@ func TestFetchETHBalanceAndSave(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		r := gin.Default() // Create a new gin.Engine for this sub-test
 		mockBlockchainDataFetcher := new(MockBlockchainDataFetcher)
-		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher)
+		mockUserManager := new(MockUserManager) // Initialize mockUserManager for this sub-test
+		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher, mockUserManager)
 		apiHandler.RegisterRoutes(r)
 
 		mockBlockchainDataFetcher.On("FetchAndSaveETHBalance", mock.Anything, testAddress).Return(nil).Once()
@@ -134,7 +158,8 @@ func TestFetchETHBalanceAndSave(t *testing.T) {
 	t.Run("invalid_address", func(t *testing.T) {
 		r := gin.Default() // Create a new gin.Engine for this sub-test
 		mockBlockchainDataFetcher := new(MockBlockchainDataFetcher)
-		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher)
+		mockUserManager := new(MockUserManager) // Initialize mockUserManager for this sub-test
+		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher, mockUserManager)
 		apiHandler.RegisterRoutes(r)
 
 		req, _ := http.NewRequest(http.MethodPost, "/api/v1/blockchain/fetch-eth-balance/invalid-address", nil)
@@ -150,7 +175,8 @@ func TestFetchETHBalanceAndSave(t *testing.T) {
 	t.Run("service_error", func(t *testing.T) {
 		r := gin.Default() // Create a new gin.Engine for this sub-test
 		mockBlockchainDataFetcher := new(MockBlockchainDataFetcher)
-		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher)
+		mockUserManager := new(MockUserManager) // Initialize mockUserManager for this sub-test
+		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher, mockUserManager)
 		apiHandler.RegisterRoutes(r)
 
 		mockBlockchainDataFetcher.On("FetchAndSaveETHBalance", mock.Anything, testAddress).Return(errors.New("service error")).Once()
@@ -162,5 +188,119 @@ func TestFetchETHBalanceAndSave(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		assert.Contains(t, w.Body.String(), "Failed to fetch and save ETH balance")
 		mockBlockchainDataFetcher.AssertExpectations(t)
+	})
+}
+
+func TestUserRegistration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	setup := func() (*gin.Engine, *MockUserManager) {
+		r := gin.Default()
+		mockPortfolioManager := new(MockPortfolioManager)
+		mockBlockchainDataFetcher := new(MockBlockchainDataFetcher)
+		mockUserManager := new(MockUserManager)
+		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher, mockUserManager)
+		apiHandler.RegisterRoutes(r)
+		return r, mockUserManager
+	}
+
+	// Test case: Successful registration
+	t.Run("successful_registration", func(t *testing.T) {
+		r, mockUserManager := setup()
+		testUser := &model.User{ID: 1, Username: "testuser", Email: "test@example.com"}
+		mockUserManager.On("RegisterUser", "testuser", "test@example.com", "password123").Return(testUser, nil).Once()
+
+		registrationData := gin.H{
+			"username": "testuser",
+			"email":    "test@example.com",
+			"password": "password123",
+		}
+		jsonValue, _ := json.Marshal(registrationData)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(jsonValue))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		assert.Contains(t, w.Body.String(), `"message":"User registered successfully"`)
+		assert.Contains(t, w.Body.String(), `"user_id":1`)
+		assert.Contains(t, w.Body.String(), `"username":"testuser"`)
+		mockUserManager.AssertExpectations(t)
+	})
+
+	// Test case: Registration with missing fields (example)
+	t.Run("missing_fields", func(t *testing.T) {
+		r, mockUserManager := setup()
+		registrationData := gin.H{
+			"username": "testuser",
+			"email":    "test@example.com",
+			// Missing password
+		}
+		jsonValue, _ := json.Marshal(registrationData)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(jsonValue))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code) // Expect 400 Bad Request
+		assert.Contains(t, w.Body.String(), "Key: 'Password' Error:Field validation for 'Password' failed on the 'required' tag")
+		mockUserManager.AssertNotCalled(t, "RegisterUser", mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+func TestUserLogin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	setup := func() (*gin.Engine, *MockUserManager) {
+		r := gin.Default()
+		mockPortfolioManager := new(MockPortfolioManager)
+		mockBlockchainDataFetcher := new(MockBlockchainDataFetcher)
+		mockUserManager := new(MockUserManager)
+		apiHandler := NewAPI(mockPortfolioManager, mockBlockchainDataFetcher, mockUserManager)
+		apiHandler.RegisterRoutes(r)
+		return r, mockUserManager
+	}
+
+	// Test case: Successful login
+	t.Run("successful_login", func(t *testing.T) {
+		r, mockUserManager := setup()
+		testUser := &model.User{ID: 1, Username: "testuser", Email: "test@example.com"}
+		mockUserManager.On("LoginUser", "test@example.com", "password123").Return(testUser, nil).Once()
+
+		loginData := gin.H{
+			"email":    "test@example.com",
+			"password": "password123",
+		}
+		jsonValue, _ := json.Marshal(loginData)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonValue))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"message":"Login successful"`)
+		assert.Contains(t, w.Body.String(), `"user_id":1`)
+		assert.Contains(t, w.Body.String(), `"username":"testuser"`)
+		mockUserManager.AssertExpectations(t)
+	})
+
+	// Test case: Login with incorrect credentials
+	t.Run("incorrect_credentials", func(t *testing.T) {
+		r, mockUserManager := setup()
+		mockUserManager.On("LoginUser", "wrong@example.com", "wrongpass").Return((*model.User)(nil), errors.New("invalid credentials")).Once()
+
+		loginData := gin.H{
+			"email":    "wrong@example.com",
+			"password": "wrongpass",
+		}
+		jsonValue, _ := json.Marshal(loginData)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(jsonValue))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code) // Expect 401 Unauthorized
+		assert.Contains(t, w.Body.String(), `"error":"invalid credentials"`)
+		mockUserManager.AssertExpectations(t)
 	})
 }
