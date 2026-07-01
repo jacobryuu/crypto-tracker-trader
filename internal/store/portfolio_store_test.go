@@ -8,7 +8,7 @@ import (
 
 	"crypto-tracker-trader/internal/model"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,21 +21,21 @@ func getTestDatabaseURL() string {
 	return url
 }
 
-func setupTestDB(t *testing.T) *pgx.Conn {
+func setupTestDB(t *testing.T) *pgxpool.Pool {
 	dbURL := getTestDatabaseURL()
-	conn, err := pgx.Connect(context.Background(), dbURL)
+	pool, err := pgxpool.Connect(context.Background(), dbURL)
 	if err != nil {
 		t.Fatalf("Unable to connect to test database: %v", err)
 	}
 
 	// Clear existing tables
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_assets CASCADE;")
+	_, err = pool.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_assets CASCADE;")
 	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_snapshots CASCADE;")
+	_, err = pool.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_snapshots CASCADE;")
 	assert.NoError(t, err)
 
 	// Create tables
-	_, err = conn.Exec(context.Background(), `
+	_, err = pool.Exec(context.Background(), `
         CREATE TABLE portfolio_snapshots (
             id SERIAL PRIMARY KEY,
             timestamp TIMESTAMPTZ NOT NULL,
@@ -52,22 +52,22 @@ func setupTestDB(t *testing.T) *pgx.Conn {
     `)
 	assert.NoError(t, err)
 
-	return conn
+	return pool
 }
 
-func teardownTestDB(t *testing.T, conn *pgx.Conn) {
-	_, err := conn.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_assets CASCADE;")
+func teardownTestDB(t *testing.T, pool *pgxpool.Pool) {
+	_, err := pool.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_assets CASCADE;")
 	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_snapshots CASCADE;")
+	_, err = pool.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_snapshots CASCADE;")
 	assert.NoError(t, err)
-	conn.Close(context.Background())
+	pool.Close()
 }
 
 func TestPortfolioStore(t *testing.T) {
-	conn := setupTestDB(t)
-	defer teardownTestDB(t, conn)
+	pool := setupTestDB(t)
+	defer teardownTestDB(t, pool)
 
-	store := &PortfolioStore{db: conn} // Use the existing PortfolioStore struct with the test connection
+	store := &PortfolioStore{db: pool}
 
 	// Test AddSnapshot and GetHistory
 	snapshot1 := model.PortfolioSnapshot{

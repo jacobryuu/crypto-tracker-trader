@@ -9,6 +9,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Sentinel errors for user service operations.
+var (
+	ErrUsernameTaken     = errors.New("username already taken")
+	ErrEmailTaken        = errors.New("email already taken")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+)
+
 // UserService implements the UserManager interface.
 type UserService struct {
 	userStore UserStoreInterface

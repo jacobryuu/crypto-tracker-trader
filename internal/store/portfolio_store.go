@@ -3,25 +3,26 @@ package store
 import (
 	"context"
 	"log"
+	"sort"
 	"time"
 
 	"crypto-tracker-trader/internal/model"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type PortfolioStore struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 }
 
-func NewPortfolioStore(db *pgx.Conn) *PortfolioStore {
+func NewPortfolioStore(db *pgxpool.Pool) *PortfolioStore {
 	return &PortfolioStore{db: db}
 }
 
 func (s *PortfolioStore) Close() {
-	if err := s.db.Close(context.Background()); err != nil {
-		log.Printf("Error closing database connection: %v", err)
-	}
+	s.db.Close()
+	log.Printf("PortfolioStore database pool closed")
 }
 
 func (s *PortfolioStore) AddSnapshot(snapshot model.PortfolioSnapshot) error {
@@ -89,14 +90,13 @@ func (s *PortfolioStore) GetHistory() ([]model.PortfolioSnapshot, error) {
 		snapshotsMap[snapshotID].Assets = append(snapshotsMap[snapshotID].Assets, asset)
 	}
 
-	// Convert map to slice and respect order
+	// Convert map to slice in descending snapshot ID order
 	var snapshots []model.PortfolioSnapshot
-	// A bit of a hack to get ordered keys
 	var keys []int
 	for k := range snapshotsMap {
 		keys = append(keys, k)
 	}
-	// sort.Sort(sort.Reverse(sort.IntSlice(keys)))
+	sort.Sort(sort.Reverse(sort.IntSlice(keys)))
 
 	for _, k := range keys {
 		snapshots = append(snapshots, *snapshotsMap[k])

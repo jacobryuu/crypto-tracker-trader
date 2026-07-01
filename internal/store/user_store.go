@@ -8,23 +8,23 @@ import (
 	"crypto-tracker-trader/internal/model"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 // UserStore implements UserStoreInterface for PostgreSQL.
 type UserStore struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 }
 
 // NewUserStore creates a new UserStore instance.
-func NewUserStore(db *pgx.Conn) *UserStore {
+func NewUserStore(db *pgxpool.Pool) *UserStore {
 	return &UserStore{db: db}
 }
 
-// Close closes the database connection.
+// Close closes the database pool.
 func (s *UserStore) Close() {
-	if err := s.db.Close(context.Background()); err != nil {
-		log.Printf("Error closing user database connection: %v", err)
-	}
+	s.db.Close()
+	log.Printf("UserStore database pool closed")
 }
 
 // CreateUser inserts a new user, their credential, and auth provider into the database.

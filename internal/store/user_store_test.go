@@ -7,7 +7,7 @@ import (
 
 	"crypto-tracker-trader/internal/model"
 
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -20,35 +20,25 @@ func getUserTestDatabaseURL() string {
 	return url
 }
 
-func setupUserStoreTestDB(t *testing.T) *pgx.Conn {
+func setupUserStoreTestDB(t *testing.T) *pgxpool.Pool {
 	dbURL := getUserTestDatabaseURL()
-	conn, err := pgx.Connect(context.Background(), dbURL)
+	pool, err := pgxpool.Connect(context.Background(), dbURL)
 	if err != nil {
 		t.Fatalf("Unable to connect to test database: %v", err)
 	}
 
 	// Clear existing tables in correct order due to foreign keys
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS user_defi_positions CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS user_nfts CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS user_assets CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS user_wallets CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS user_auth_providers CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS user_credentials CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS users CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_assets CASCADE;")
-	assert.NoError(t, err)
-	_, err = conn.Exec(context.Background(), "DROP TABLE IF EXISTS portfolio_snapshots CASCADE;")
-	assert.NoError(t, err)
+	for _, table := range []string{
+		"user_defi_positions", "user_nfts", "user_assets", "user_wallets",
+		"user_auth_providers", "user_credentials", "users",
+		"portfolio_assets", "portfolio_snapshots",
+	} {
+		_, err = pool.Exec(context.Background(), "DROP TABLE IF EXISTS "+table+" CASCADE;")
+		assert.NoError(t, err)
+	}
 
 	// Create tables (users, user_credentials, user_auth_providers)
-	_, err = conn.Exec(context.Background(), `
+	_, err = pool.Exec(context.Background(), `
 		CREATE TABLE users (
 			id BIGSERIAL PRIMARY KEY,
 			username VARCHAR(50) UNIQUE NOT NULL,
@@ -79,22 +69,20 @@ func setupUserStoreTestDB(t *testing.T) *pgx.Conn {
     `)
 	assert.NoError(t, err)
 
-	return conn
+	return pool
 }
 
-func teardownUserStoreTestDB(t *testing.T, conn *pgx.Conn) {
-	_, err := conn.Exec(context.Background(), "DROP TABLE IF EXISTS users CASCADE;")
+func teardownUserStoreTestDB(t *testing.T, pool *pgxpool.Pool) {
+	_, err := pool.Exec(context.Background(), "DROP TABLE IF EXISTS users CASCADE;")
 	assert.NoError(t, err)
-	if err := conn.Close(context.Background()); err != nil {
-		t.Fatalf("Error closing database connection: %v", err)
-	}
+	pool.Close()
 }
 
 func TestUserStore_CreateUser(t *testing.T) {
-	conn := setupUserStoreTestDB(t)
-	defer teardownUserStoreTestDB(t, conn)
+	pool := setupUserStoreTestDB(t)
+	defer teardownUserStoreTestDB(t, pool)
 
-	store := &UserStore{db: conn}
+	store := &UserStore{db: pool}
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	user := &model.User{
@@ -138,17 +126,17 @@ func TestUserStore_CreateUser(t *testing.T) {
 
 	// Verify AuthProvider (requires a separate query as it's not joined in GetUserByID/Username)
 	var count int
-	err = conn.QueryRow(context.Background(), "SELECT COUNT(*) FROM user_auth_providers WHERE user_id = $1 AND provider = $2 AND provider_user_id = $3",
+	err = pool.QueryRow(context.Background(), "SELECT COUNT(*) FROM user_auth_providers WHERE user_id = $1 AND provider = $2 AND provider_user_id = $3",
 		user.ID, authProvider.Provider, authProvider.ProviderUserID).Scan(&count)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
 }
 
 func TestUserStore_GetUserByUsername_NotFound(t *testing.T) {
-	conn := setupUserStoreTestDB(t)
-	defer teardownUserStoreTestDB(t, conn)
+	pool := setupUserStoreTestDB(t)
+	defer teardownUserStoreTestDB(t, pool)
 
-	store := &UserStore{db: conn}
+	store := &UserStore{db: pool}
 
 	user, credential, err := store.GetUserByUsername("nonexistent")
 	assert.NoError(t, err) // pgx.ErrNoRows is handled to return nil, nil
@@ -157,10 +145,10 @@ func TestUserStore_GetUserByUsername_NotFound(t *testing.T) {
 }
 
 func TestUserStore_GetUserByID_NotFound(t *testing.T) {
-	conn := setupUserStoreTestDB(t)
-	defer teardownUserStoreTestDB(t, conn)
+	pool := setupUserStoreTestDB(t)
+	defer teardownUserStoreTestDB(t, pool)
 
-	store := &UserStore{db: conn}
+	store := &UserStore{db: pool}
 
 	user, credential, err := store.GetUserByID(999) // Non-existent ID
 	assert.NoError(t, err)
@@ -169,10 +157,10 @@ func TestUserStore_GetUserByID_NotFound(t *testing.T) {
 }
 
 func TestUserStore_CreateUser_DuplicateUsername(t *testing.T) {
-	conn := setupUserStoreTestDB(t)
-	defer teardownUserStoreTestDB(t, conn)
+	pool := setupUserStoreTestDB(t)
+	defer teardownUserStoreTestDB(t, pool)
 
-	store := &UserStore{db: conn}
+	store := &UserStore{db: pool}
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	user1 := &model.User{
