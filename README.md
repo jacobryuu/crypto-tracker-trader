@@ -22,7 +22,7 @@ This project is a crypto tracker and trader application that aims to provide int
 ## Getting Started
 
 ### Prerequisites
-- Go (version 1.25.2 or higher)
+- Go (version 1.27.0 or higher)
 - Docker and Docker Compose
 - PostgreSQL client (optional, for direct database interaction)
 - An Ethereum node URL (e.g., Infura, Alchemy, or a local node)
